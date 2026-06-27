@@ -51,6 +51,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -76,23 +77,29 @@ public final class WeatherEffectHandler {
     private enum WeatherType { CLEAR, RAIN, THUNDER }
 
     enum Difficulty {
-        NORMAL("普通", 12000, null),
-        EASY("简单", 18000, null),
-        HARD("困难", 6000, null),
-        EXTREME("极难", 6000, WeatherType.RAIN),
-        ULTRA_EXTREME("超极难", 6000, WeatherType.THUNDER),
-        HELL("地狱", 1200, WeatherType.RAIN),
-        ULTRA_HELL("超地狱", 1200, WeatherType.THUNDER),
-        CUSTOM("自定义", 12000, null);
+        NORMAL("普通", "Normal", 12000, null),
+        EASY("简单", "Easy", 18000, null),
+        HARD("困难", "Hard", 6000, null),
+        EXTREME("极难", "Extreme", 6000, WeatherType.RAIN),
+        ULTRA_EXTREME("超极难", "Ultra Extreme", 6000, WeatherType.THUNDER),
+        HELL("地狱", "Hell", 1200, WeatherType.RAIN),
+        ULTRA_HELL("超地狱", "Ultra Hell", 1200, WeatherType.THUNDER),
+        CUSTOM("自定义", "Custom", 12000, null);
 
-        final String displayName;
+        final String displayNameCN;
+        final String displayNameEN;
         final int interval;
         final WeatherType forcedWeather;
 
-        Difficulty(String displayName, int interval, WeatherType forcedWeather) {
-            this.displayName = displayName;
+        Difficulty(String displayNameCN, String displayNameEN, int interval, WeatherType forcedWeather) {
+            this.displayNameCN = displayNameCN;
+            this.displayNameEN = displayNameEN;
             this.interval = interval;
             this.forcedWeather = forcedWeather;
+        }
+
+        String getDisplayName(ServerPlayer player) {
+            return getLang(player).startsWith("zh") ? displayNameCN : displayNameEN;
         }
     }
 
@@ -103,6 +110,117 @@ public final class WeatherEffectHandler {
     }
 
     private static final Map<UUID, PlayerData> playerDataMap = new ConcurrentHashMap<>();
+    private static final Map<UUID, String> playerLanguage = new ConcurrentHashMap<>();
+
+    private static final Map<String, String> ZH = new HashMap<>();
+    private static final Map<String, String> EN = new HashMap<>();
+
+    static {
+        ZH.put("disabled_tip", "§c[天气效果] §f模组已关闭，无法触发效果");
+        EN.put("disabled_tip", "§c[Weather Effect] §fMod is disabled, cannot trigger effects");
+        ZH.put("toggle_on", "§a[天气效果] §f模组已§a开启");
+        EN.put("toggle_on", "§a[Weather Effect] §fMod §aenabled");
+        ZH.put("toggle_off", "§a[天气效果] §f模组已§c关闭");
+        EN.put("toggle_off", "§a[Weather Effect] §fMod §cdisabled");
+        ZH.put("set_interval", "§a[天气效果] §f已切换至自定义难度，检查间隔已设为 %d tick（%d 秒）");
+        EN.put("set_interval", "§a[Weather Effect] §fSwitched to custom difficulty, check interval set to %d ticks (%d seconds)");
+        ZH.put("specified_only", "§c[天气效果] §f该指令仅在指定模式下可用");
+        EN.put("specified_only", "§c[Weather Effect] §fThis command is only available in specified mode");
+        ZH.put("invalid_effect_id", "§c[天气效果] §f无效的效果ID：%s");
+        EN.put("invalid_effect_id", "§c[Weather Effect] §fInvalid effect ID: %s");
+        ZH.put("effect_not_found", "§c[天气效果] §f未找到效果：%s");
+        EN.put("effect_not_found", "§c[Weather Effect] §fEffect not found: %s");
+        ZH.put("unknown_weather", "§c[天气效果] §f未知天气：%s（可选：clear, rain, thunder）");
+        EN.put("unknown_weather", "§c[Weather Effect] §fUnknown weather: %s (options: clear, rain, thunder)");
+        ZH.put("set_effect", "§a[天气效果] §f已设置%s的效果为：");
+        EN.put("set_effect", "§a[Weather Effect] §fSet %s effect to: ");
+        ZH.put("weather_clear_name", "晴天");
+        EN.put("weather_clear_name", "Clear");
+        ZH.put("weather_rain_name", "雨天");
+        EN.put("weather_rain_name", "Rain");
+        ZH.put("weather_thunder_name", "雷暴");
+        EN.put("weather_thunder_name", "Thunder");
+        ZH.put("specified_interval", "§a[天气效果] §f指定模式刷新间隔已设为 %d tick（%d 秒）");
+        EN.put("specified_interval", "§a[Weather Effect] §fSpecified mode refresh interval set to %d ticks (%d seconds)");
+        ZH.put("specified_infinite", "§a[天气效果] §f指定模式刷新间隔已设为无限，效果将不再自动刷新");
+        EN.put("specified_infinite", "§a[Weather Effect] §fSpecified mode refresh interval set to infinite, effects will not auto-refresh");
+        ZH.put("mode_random", "§a[天气效果] §f已切换至随机模式");
+        EN.put("mode_random", "§a[Weather Effect] §fSwitched to random mode");
+        ZH.put("mode_specified", "§a[天气效果] §f已切换至指定模式，效果已公告");
+        EN.put("mode_specified", "§a[Weather Effect] §fSwitched to specified mode, effects announced");
+        ZH.put("mode_query", "§a[天气效果] §f当前模式：%s");
+        EN.put("mode_query", "§a[Weather Effect] §fCurrent mode: %s");
+        ZH.put("mode_random_name", "随机模式");
+        EN.put("mode_random_name", "Random Mode");
+        ZH.put("mode_specified_name", "指定模式");
+        EN.put("mode_specified_name", "Specified Mode");
+        ZH.put("unknown_difficulty", "§c[天气效果] §f未知难度：%s");
+        EN.put("unknown_difficulty", "§c[Weather Effect] §fUnknown difficulty: %s");
+        ZH.put("custom_difficulty_hint", "§c[天气效果] §f请使用 /weathereffect difficulty custom <interval> <weather> 设置自定义难度");
+        EN.put("custom_difficulty_hint", "§c[Weather Effect] §fPlease use /weathereffect difficulty custom <interval> <weather> to set custom difficulty");
+        ZH.put("force_delay", "§a[天气效果] §f§l【天气效果】将在%s后一直为%s。");
+        EN.put("force_delay", "§a[Weather Effect] §l[Weather Effect] Will stay %s after %s.");
+        ZH.put("difficulty_set", "§a[天气效果] §f难度已设为 %s，间隔 %d 秒%s");
+        EN.put("difficulty_set", "§a[Weather Effect] §fDifficulty set to %s, interval %d seconds%s");
+        ZH.put("unknown_weather_option", "§c[天气效果] §f未知天气选项：%s（可选：none, rain, thunder）");
+        EN.put("unknown_weather_option", "§c[Weather Effect] §fUnknown weather option: %s (options: none, rain, thunder)");
+        ZH.put("difficulty_query", "§a[天气效果] §f当前难度：%s，间隔：%d秒%s");
+        EN.put("difficulty_query", "§a[Weather Effect] §fCurrent difficulty: %s, interval: %d seconds%s");
+        ZH.put("no_effects", "§a[天气效果] §f当前无药水效果");
+        EN.put("no_effects", "§a[Weather Effect] §fNo active effects");
+        ZH.put("effects_header", "§a[天气效果] §f当前药水效果：");
+        EN.put("effects_header", "§a[Weather Effect] §fCurrent effects: ");
+        ZH.put("current_weather", "§a[天气效果] §f当前天气：%s");
+        EN.put("current_weather", "§a[Weather Effect] §fCurrent weather: %s");
+        ZH.put("random_only", "§c[天气效果] §f该指令仅在随机模式下可用");
+        EN.put("random_only", "§c[Weather Effect] §fThis command is only available in random mode");
+        ZH.put("duration_permanent", "§a[天气效果] §f效果持续时间模式已设为永久");
+        EN.put("duration_permanent", "§a[Weather Effect] §fDuration mode set to permanent");
+        ZH.put("duration_specific", "§a[天气效果] §f效果持续时间模式已设为特定时间");
+        EN.put("duration_specific", "§a[Weather Effect] §fDuration mode set to specific time");
+        ZH.put("duration_query", "§a[天气效果] §f当前效果持续时间模式：%s");
+        EN.put("duration_query", "§a[Weather Effect] §fCurrent duration mode: %s");
+        ZH.put("duration_permanent_name", "永久");
+        EN.put("duration_permanent_name", "Permanent");
+        ZH.put("duration_specific_name", "特定时间");
+        EN.put("duration_specific_name", "Specific Time");
+        ZH.put("specific_time_only", "§c[天气效果] §f该指令仅在特定时间模式下可用");
+        EN.put("specific_time_only", "§c[Weather Effect] §fThis command is only available in specific time mode");
+        ZH.put("set_custom_duration", "§a[天气效果] §f自定义效果持续时间已设为 %d tick（%d 秒）");
+        EN.put("set_custom_duration", "§a[Weather Effect] §fCustom effect duration set to %d ticks (%d seconds)");
+        ZH.put("duration_query_value", "§a[天气效果] §f当前自定义效果持续时间：%s");
+        EN.put("duration_query_value", "§a[Weather Effect] §fCurrent custom duration: %s");
+        ZH.put("duration_unset", "未设置（使用难度触发间隔）");
+        EN.put("duration_unset", "Not set (using difficulty interval)");
+        ZH.put("effect_feedback", "§a[天气效果] §f已触发 %d 个效果（%d秒触发一次）：");
+        EN.put("effect_feedback", "§a[Weather Effect] §fTriggered %d effect(s) (every %d seconds): ");
+        ZH.put("mod_info_header", "§a[天气效果] §f当前模式：%s，当前难度：%s，间隔：%d秒");
+        EN.put("mod_info_header", "§a[Weather Effect] §fMode: %s, Difficulty: %s, Interval: %d seconds");
+        ZH.put("effects_current_header", "§a[天气效果] §f当前效果：");
+        EN.put("effects_current_header", "§a[Weather Effect] §fCurrent effects: ");
+        ZH.put("specified_refreshed", "§a[天气效果] §f指定模式效果已刷新：");
+        EN.put("specified_refreshed", "§a[Weather Effect] §fSpecified mode effects refreshed:");
+        ZH.put("specified_clear_label", "§e晴天§f：");
+        EN.put("specified_clear_label", "§eClear§f: ");
+        ZH.put("specified_rain_label", "§b雨天§f：");
+        EN.put("specified_rain_label", "§bRain§f: ");
+        ZH.put("specified_thunder_label", "§d雷暴§f：");
+        EN.put("specified_thunder_label", "§dThunder§f: ");
+        ZH.put("none_text", "§7无");
+        EN.put("none_text", "§7None");
+        ZH.put("unknown_text", "§7未知");
+        EN.put("unknown_text", "§7Unknown");
+        ZH.put("current_language", "§a[天气效果] §f当前语言：%s");
+        EN.put("current_language", "§a[Weather Effect] §fCurrent language: %s");
+        ZH.put("language_set", "§a[天气效果] §f语言已设为 %s");
+        EN.put("language_set", "§a[Weather Effect] §fLanguage set to %s");
+        ZH.put("language_auto", "自动");
+        EN.put("language_auto", "Auto");
+        ZH.put("force_rain", "强制雨天");
+        EN.put("force_rain", "forced rain");
+        ZH.put("force_thunder", "强制雷暴");
+        EN.put("force_thunder", "forced thunderstorm");
+    }
 
     private static final List<Holder<MobEffect>> POSITIVE_EFFECTS = List.of(
         MobEffects.NIGHT_VISION,
@@ -183,12 +301,11 @@ public final class WeatherEffectHandler {
                 data.setDirty();
 
                 rerollSpecifiedEffects(data, overworld.random);
-                Component announcement = buildSpecifiedAnnouncement(data);
 
                 for (ServerLevel level : event.getServer().getAllLevels()) {
                     WeatherType currentWeather = getWeatherType(level);
                     for (ServerPlayer player : level.players()) {
-                        player.sendSystemMessage(announcement);
+                        player.sendSystemMessage(buildSpecifiedAnnouncement(player, data));
                         var newlyApplied = applySpecifiedEffect(player, currentWeather, data);
                         sendEffectFeedback(player, newlyApplied, getEffectiveSpecifiedInterval(data) / 20);
                     }
@@ -213,6 +330,9 @@ public final class WeatherEffectHandler {
     @SubscribeEvent
     public static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            if (!playerLanguage.containsKey(player.getUUID())) {
+                playerLanguage.put(player.getUUID(), player.getLanguage());
+            }
             WeatherEffectData data = getData(player);
             if (!data.isEnabled()) return;
             if (player.getActiveEffects().isEmpty()) {
@@ -272,7 +392,7 @@ public final class WeatherEffectHandler {
                     ServerPlayer player = ctx.getSource().getPlayerOrException();
                     WeatherEffectData data = getData(player);
                     if (!data.isEnabled()) {
-                        player.sendSystemMessage(Component.literal("§c[天气效果] §f模组已关闭，无法触发效果"));
+                        player.sendSystemMessage(msg(player, "disabled_tip"));
                         return 0;
                     }
                     if (data.getMode().equals("SPECIFIED")) {
@@ -293,7 +413,7 @@ public final class WeatherEffectHandler {
                     boolean newEnabled = !data.isEnabled();
                     data.setEnabled(newEnabled);
                     ctx.getSource().sendSuccess(() ->
-                        Component.literal("§a[天气效果] §f模组已" + (newEnabled ? "§a开启" : "§c关闭")),
+                        msg(player, newEnabled ? "toggle_on" : "toggle_off"),
                         true
                     );
                     return 1;
@@ -312,7 +432,7 @@ public final class WeatherEffectHandler {
                         data.setTickCounter(0);
                         data.setPendingForcedWeatherTicks(0);
                         ctx.getSource().sendSuccess(() ->
-                            Component.literal("§a[天气效果] §f已切换至自定义难度，检查间隔已设为 " + ticks + " tick（" + (ticks / 20) + " 秒）"),
+                            msgf(player, "set_interval", ticks, ticks / 20),
                             true
                         );
                         return 1;
@@ -335,19 +455,19 @@ public final class WeatherEffectHandler {
                             ServerPlayer player = ctx.getSource().getPlayerOrException();
                             WeatherEffectData data = getData(player);
                             if (!data.getMode().equals("SPECIFIED")) {
-                                ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f该指令仅在指定模式下可用"));
+                                ctx.getSource().sendFailure(msg(player, "specified_only"));
                                 return 0;
                             }
                             ResourceLocation rl;
                             try {
                                 rl = ResourceLocation.parse(effectId);
                             } catch (Exception e) {
-                                ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f无效的效果ID：" + effectId));
+                                ctx.getSource().sendFailure(msgf(player, "invalid_effect_id", effectId));
                                 return 0;
                             }
                             ResourceKey<MobEffect> key = ResourceKey.create(Registries.MOB_EFFECT, rl);
                             if (BuiltInRegistries.MOB_EFFECT.getHolder(key).isEmpty()) {
-                                ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f未找到效果：" + effectId));
+                                ctx.getSource().sendFailure(msgf(player, "effect_not_found", effectId));
                                 return 0;
                             }
                             switch (weather) {
@@ -355,21 +475,21 @@ public final class WeatherEffectHandler {
                                 case "rain" -> data.setSpecifiedRainEffect(effectId);
                                 case "thunder" -> data.setSpecifiedThunderEffect(effectId);
                                 default -> {
-                                    ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f未知天气：" + weather + "（可选：clear, rain, thunder）"));
+                                    ctx.getSource().sendFailure(msgf(player, "unknown_weather", weather));
                                     return 0;
                                 }
                             }
-                            String weatherName = switch (weather) {
-                                case "clear" -> "晴天";
-                                case "rain" -> "雨天";
-                                case "thunder" -> "雷暴";
+                            String weatherName = tr(player, switch (weather) {
+                                case "clear" -> "weather_clear_name";
+                                case "rain" -> "weather_rain_name";
+                                case "thunder" -> "weather_thunder_name";
                                 default -> "";
-                            };
+                            });
                             Component effectComp = BuiltInRegistries.MOB_EFFECT.getHolder(key)
                                 .map(h -> Component.translatable(h.value().getDescriptionId()))
                                 .orElse(Component.literal(effectId));
                             ctx.getSource().sendSuccess(() ->
-                                Component.literal("§a[天气效果] §f已设置" + weatherName + "的效果为：").append(effectComp),
+                                Component.literal("").append(msgf(player, "set_effect", weatherName)).append(effectComp),
                                 true
                             );
                             return 1;
@@ -385,14 +505,14 @@ public final class WeatherEffectHandler {
                         ServerPlayer player = ctx.getSource().getPlayerOrException();
                         WeatherEffectData data = getData(player);
                         if (!data.getMode().equals("SPECIFIED")) {
-                            ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f该指令仅在指定模式下可用"));
+                            ctx.getSource().sendFailure(msg(player, "specified_only"));
                             return 0;
                         }
                         data.setSpecifiedInterval(ticks);
                         data.setSpecifiedInfinite(false);
                         data.setSpecifiedTickCounter(0);
                         ctx.getSource().sendSuccess(() ->
-                            Component.literal("§a[天气效果] §f指定模式刷新间隔已设为 " + ticks + " tick（" + (ticks / 20) + " 秒）"),
+                            msgf(player, "specified_interval", ticks, ticks / 20),
                             true
                         );
                         return 1;
@@ -403,13 +523,13 @@ public final class WeatherEffectHandler {
                         ServerPlayer player = ctx.getSource().getPlayerOrException();
                         WeatherEffectData data = getData(player);
                         if (!data.getMode().equals("SPECIFIED")) {
-                            ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f该指令仅在指定模式下可用"));
+                            ctx.getSource().sendFailure(msg(player, "specified_only"));
                             return 0;
                         }
                         data.setSpecifiedInfinite(true);
                         data.setSpecifiedTickCounter(0);
                         ctx.getSource().sendSuccess(() ->
-                            Component.literal("§a[天气效果] §f指定模式刷新间隔已设为无限，效果将不再自动刷新"),
+                            msg(player, "specified_infinite"),
                             true
                         );
                         return 1;
@@ -424,7 +544,7 @@ public final class WeatherEffectHandler {
                         WeatherEffectData data = getData(player);
                         data.setMode("RANDOM");
                         ctx.getSource().sendSuccess(() ->
-                            Component.literal("§a[天气效果] §f已切换至随机模式"),
+                            msg(player, "mode_random"),
                             true
                         );
                         return 1;
@@ -440,14 +560,13 @@ public final class WeatherEffectHandler {
                             rerollSpecifiedEffects(data, player.serverLevel().random);
                         }
                         data.setSpecifiedTickCounter(0);
-                        Component announcement = buildSpecifiedAnnouncement(data);
                         for (ServerPlayer p : player.server.getPlayerList().getPlayers()) {
-                            p.sendSystemMessage(announcement);
+                            p.sendSystemMessage(buildSpecifiedAnnouncement(p, data));
                         }
                         var newlyApplied = applySpecifiedEffect(player, getWeatherType(player.serverLevel()), data);
                         sendEffectFeedback(player, newlyApplied, getEffectiveSpecifiedInterval(data) / 20);
                         ctx.getSource().sendSuccess(() ->
-                            Component.literal("§a[天气效果] §f已切换至指定模式，效果已公告"),
+                            msg(player, "mode_specified"),
                             true
                         );
                         return 1;
@@ -456,8 +575,8 @@ public final class WeatherEffectHandler {
                 .executes(ctx -> {
                     ServerPlayer player = ctx.getSource().getPlayerOrException();
                     WeatherEffectData data = getData(player);
-                    String modeName = data.getMode().equals("SPECIFIED") ? "指定模式" : "随机模式";
-                    player.sendSystemMessage(Component.literal("§a[天气效果] §f当前模式：" + modeName));
+                    String modeName = tr(player, data.getMode().equals("SPECIFIED") ? "mode_specified_name" : "mode_random_name");
+                    player.sendSystemMessage(msgf(player, "mode_query", modeName));
                     return 1;
                 })
             )
@@ -476,11 +595,11 @@ public final class WeatherEffectHandler {
                         try {
                             diff = Difficulty.valueOf(name.toUpperCase());
                         } catch (IllegalArgumentException e) {
-                            ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f未知难度：" + name));
+                            ctx.getSource().sendFailure(msgf(ctx.getSource().getPlayerOrException(), "unknown_difficulty", name));
                             return 0;
                         }
                         if (diff == Difficulty.CUSTOM) {
-                            ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f请使用 /weathereffect difficulty custom <interval> <weather> 设置自定义难度"));
+                            ctx.getSource().sendFailure(msg(ctx.getSource().getPlayerOrException(), "custom_difficulty_hint"));
                             return 0;
                         }
                         ServerPlayer player = ctx.getSource().getPlayerOrException();
@@ -495,20 +614,27 @@ public final class WeatherEffectHandler {
                             int delaySec = diff.interval / 20;
                             int delayMin = delaySec / 60;
                             int delaySecRem = delaySec % 60;
-                            String weatherName = diff.forcedWeather == WeatherType.RAIN ? "雨天" : "雷暴";
-                            String timeMsg = delayMin > 0
-                                ? delayMin + "分" + (delaySecRem > 0 ? delaySecRem + "秒" : "")
-                                : delaySec + "秒";
+                            String weatherName = tr(player, diff.forcedWeather == WeatherType.RAIN ? "weather_rain_name" : "weather_thunder_name");
+                            String timeMsg;
+                            if (getLang(player).startsWith("zh")) {
+                                timeMsg = delayMin > 0
+                                    ? delayMin + "分" + (delaySecRem > 0 ? delaySecRem + "秒" : "")
+                                    : delaySec + "秒";
+                            } else {
+                                timeMsg = delayMin > 0
+                                    ? delayMin + " min " + (delaySecRem > 0 ? delaySecRem + " sec" : "")
+                                    : delaySec + " seconds";
+                            }
                             ctx.getSource().sendSuccess(() ->
-                                Component.literal("§a[天气效果] §f§l【天气效果】将在" + timeMsg + "后一直为" + weatherName + "。"),
+                                msgf(player, "force_delay", timeMsg, weatherName),
                                 true
                             );
                         } else {
                             String extra = diff.forcedWeather != null
-                                ? "，强制" + (diff.forcedWeather == WeatherType.RAIN ? "雨天" : "雷暴")
+                                ? (getLang(player).startsWith("zh") ? "，" : ", ") + tr(player, diff.forcedWeather == WeatherType.RAIN ? "force_rain" : "force_thunder")
                                 : "";
                             ctx.getSource().sendSuccess(() ->
-                                Component.literal("§a[天气效果] §f难度已设为 " + diff.displayName + "，间隔 " + (diff.interval / 20) + " 秒" + extra),
+                                msgf(player, "difficulty_set", diff.getDisplayName(player), diff.interval / 20, extra),
                                 true
                             );
                         }
@@ -533,7 +659,7 @@ public final class WeatherEffectHandler {
                                     case "rain" -> WeatherType.RAIN;
                                     case "thunder" -> WeatherType.THUNDER;
                                     default -> {
-                                        ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f未知天气选项：" + weatherStr + "（可选：none, rain, thunder）"));
+                                        ctx.getSource().sendFailure(msgf(ctx.getSource().getPlayerOrException(), "unknown_weather_option", weatherStr));
                                         yield null;
                                     }
                                 };
@@ -545,13 +671,14 @@ public final class WeatherEffectHandler {
                                     data.setDifficulty(Difficulty.CUSTOM);
                                     data.setTickCounter(0);
                                     data.setPendingForcedWeatherTicks(0);
-                                    String extra = forced != null
-                                        ? "，强制" + (forced == WeatherType.RAIN ? "雨天" : "雷暴")
-                                        : "";
-                                    ctx.getSource().sendSuccess(() ->
-                                        Component.literal("§a[天气效果] §f已设为自定义难度，间隔 " + (interval / 20) + " 秒" + extra),
-                                        true
-                                    );
+                                ServerPlayer player2 = ctx.getSource().getPlayerOrException();
+                                String extra = forced != null
+                                    ? (getLang(player2).startsWith("zh") ? "，" : ", ") + tr(player2, forced == WeatherType.RAIN ? "force_rain" : "force_thunder")
+                                    : "";
+                                ctx.getSource().sendSuccess(() ->
+                                    msgf(player2, "difficulty_set", Difficulty.CUSTOM.getDisplayName(player2), interval / 20, extra),
+                                    true
+                                );
                                 }
                                 return 1;
                             })
@@ -564,9 +691,9 @@ public final class WeatherEffectHandler {
                     int interval = getEffectiveInterval(data);
                     WeatherType forced = getEffectiveForcedWeather(data);
                     String extra = forced != null
-                        ? "，强制" + (forced == WeatherType.RAIN ? "雨天" : "雷暴")
+                        ? (getLang(player).startsWith("zh") ? "，" : ", ") + tr(player, forced == WeatherType.RAIN ? "force_rain" : "force_thunder")
                         : "";
-                    player.sendSystemMessage(Component.literal("§a[天气效果] §f当前难度：" + data.getDifficulty().displayName + "，间隔：" + (interval / 20) + "秒" + extra));
+                    player.sendSystemMessage(msgf(player, "difficulty_query", data.getDifficulty().getDisplayName(player), interval / 20, extra));
                     return 1;
                 })
             )
@@ -575,9 +702,9 @@ public final class WeatherEffectHandler {
                     ServerPlayer player = ctx.getSource().getPlayerOrException();
                     var effects = player.getActiveEffects();
                     if (effects.isEmpty()) {
-                        player.sendSystemMessage(Component.literal("§a[天气效果] §f当前无药水效果"));
+                        player.sendSystemMessage(msg(player, "no_effects"));
                     } else {
-                        MutableComponent msg = Component.literal("§a[天气效果] §f当前药水效果：");
+                        MutableComponent msg = msg(player, "effects_header").copy();
                         boolean first = true;
                         for (MobEffectInstance instance : effects) {
                             if (!first) msg = msg.append(Component.literal("§7, §f"));
@@ -599,12 +726,12 @@ public final class WeatherEffectHandler {
                 .executes(ctx -> {
                     ServerPlayer player = ctx.getSource().getPlayerOrException();
                     WeatherType weather = getWeatherType(player.serverLevel());
-                    String weatherName = switch (weather) {
-                        case CLEAR -> "晴天";
-                        case RAIN -> "雨天";
-                        case THUNDER -> "雷暴";
-                    };
-                    player.sendSystemMessage(Component.literal("§a[天气效果] §f当前天气：" + weatherName));
+                    String weatherName = tr(player, switch (weather) {
+                        case CLEAR -> "weather_clear_name";
+                        case RAIN -> "weather_rain_name";
+                        case THUNDER -> "weather_thunder_name";
+                    });
+                    player.sendSystemMessage(msgf(player, "current_weather", weatherName));
                     return 1;
                 })
             )
@@ -615,12 +742,12 @@ public final class WeatherEffectHandler {
                         ServerPlayer player = ctx.getSource().getPlayerOrException();
                         WeatherEffectData data = getData(player);
                         if (!data.getMode().equals("RANDOM")) {
-                            ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f该指令仅在随机模式下可用"));
+                            ctx.getSource().sendFailure(msg(player, "random_only"));
                             return 0;
                         }
                         data.setDurationMode("PERMANENT");
                         ctx.getSource().sendSuccess(() ->
-                            Component.literal("§a[天气效果] §f效果持续时间模式已设为永久"),
+                            msg(player, "duration_permanent"),
                             true
                         );
                         return 1;
@@ -631,12 +758,12 @@ public final class WeatherEffectHandler {
                         ServerPlayer player = ctx.getSource().getPlayerOrException();
                         WeatherEffectData data = getData(player);
                         if (!data.getMode().equals("RANDOM")) {
-                            ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f该指令仅在随机模式下可用"));
+                            ctx.getSource().sendFailure(msg(player, "random_only"));
                             return 0;
                         }
                         data.setDurationMode("SPECIFIC_TIME");
                         ctx.getSource().sendSuccess(() ->
-                            Component.literal("§a[天气效果] §f效果持续时间模式已设为特定时间"),
+                            msg(player, "duration_specific"),
                             true
                         );
                         return 1;
@@ -645,8 +772,8 @@ public final class WeatherEffectHandler {
                 .executes(ctx -> {
                     ServerPlayer player = ctx.getSource().getPlayerOrException();
                     WeatherEffectData data = getData(player);
-                    String modeName = "PERMANENT".equals(data.getDurationMode()) ? "永久" : "特定时间";
-                    player.sendSystemMessage(Component.literal("§a[天气效果] §f当前效果持续时间模式：" + modeName));
+                    String modeName = tr(player, "PERMANENT".equals(data.getDurationMode()) ? "duration_permanent_name" : "duration_specific_name");
+                    player.sendSystemMessage(msgf(player, "duration_query", modeName));
                     return 1;
                 })
             )
@@ -658,16 +785,16 @@ public final class WeatherEffectHandler {
                         ServerPlayer player = ctx.getSource().getPlayerOrException();
                         WeatherEffectData data = getData(player);
                         if (!data.getMode().equals("RANDOM")) {
-                            ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f该指令仅在随机模式下可用"));
+                            ctx.getSource().sendFailure(msg(player, "random_only"));
                             return 0;
                         }
                         if (!"SPECIFIC_TIME".equals(data.getDurationMode())) {
-                            ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f该指令仅在特定时间模式下可用"));
+                            ctx.getSource().sendFailure(msg(player, "specific_time_only"));
                             return 0;
                         }
                         data.setCustomDuration(ticks);
                         ctx.getSource().sendSuccess(() ->
-                            Component.literal("§a[天气效果] §f自定义效果持续时间已设为 " + ticks + " tick（" + (ticks / 20) + " 秒）"),
+                            msgf(player, "set_custom_duration", ticks, ticks / 20),
                             true
                         );
                         return 1;
@@ -677,17 +804,70 @@ public final class WeatherEffectHandler {
                     ServerPlayer player = ctx.getSource().getPlayerOrException();
                     WeatherEffectData data = getData(player);
                     if (!data.getMode().equals("RANDOM")) {
-                        ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f该指令仅在随机模式下可用"));
+                        ctx.getSource().sendFailure(msg(player, "random_only"));
                         return 0;
                     }
                     if (!"SPECIFIC_TIME".equals(data.getDurationMode())) {
-                        ctx.getSource().sendFailure(Component.literal("§c[天气效果] §f该指令仅在特定时间模式下可用"));
+                        ctx.getSource().sendFailure(msg(player, "specific_time_only"));
                         return 0;
                     }
                     String durationStr = data.getCustomDuration() > 0
-                        ? data.getCustomDuration() + " tick（" + (data.getCustomDuration() / 20) + " 秒）"
-                        : "未设置（使用难度触发间隔）";
-                    player.sendSystemMessage(Component.literal("§a[天气效果] §f当前自定义效果持续时间：" + durationStr));
+                        ? (getLang(player).startsWith("zh")
+                            ? data.getCustomDuration() + " tick（" + (data.getCustomDuration() / 20) + " 秒）"
+                            : data.getCustomDuration() + " ticks (" + (data.getCustomDuration() / 20) + " seconds)")
+                        : tr(player, "duration_unset");
+                    player.sendSystemMessage(msgf(player, "duration_query_value", durationStr));
+                    return 1;
+                })
+            )
+            .then(Commands.literal("language")
+                .then(Commands.literal("set")
+                    .then(Commands.argument("lang", StringArgumentType.word())
+                        .requires(source -> source.hasPermission(2))
+                        .suggests((ctx, builder) -> {
+                            builder.suggest("zh_cn");
+                            builder.suggest("en_us");
+                            return builder.buildFuture();
+                        })
+                        .executes(ctx -> {
+                            String lang = StringArgumentType.getString(ctx, "lang");
+                            ServerPlayer player = ctx.getSource().getPlayerOrException();
+                            playerLanguage.put(player.getUUID(), lang);
+                            ctx.getSource().sendSuccess(() ->
+                                msgf(player, "language_set", lang),
+                                true
+                            );
+                            return 1;
+                        })
+                    )
+                )
+                .then(Commands.literal("toggle")
+                    .executes(ctx -> {
+                        ServerPlayer player = ctx.getSource().getPlayerOrException();
+                        String currentLang = getLang(player);
+                        String newLang = currentLang.startsWith("zh") ? "en_us" : "zh_cn";
+                        playerLanguage.put(player.getUUID(), newLang);
+                        ctx.getSource().sendSuccess(() ->
+                            msgf(player, "language_set", newLang),
+                            true
+                        );
+                        return 1;
+                    })
+                )
+                .then(Commands.literal("auto")
+                    .executes(ctx -> {
+                        ServerPlayer player = ctx.getSource().getPlayerOrException();
+                        playerLanguage.remove(player.getUUID());
+                        player.sendSystemMessage(msgf(player, "current_language", tr(player, "language_auto") + " (" + player.getLanguage() + ")"));
+                        return 1;
+                    })
+                )
+                .executes(ctx -> {
+                    ServerPlayer player = ctx.getSource().getPlayerOrException();
+                    String lang = playerLanguage.containsKey(player.getUUID())
+                        ? playerLanguage.get(player.getUUID())
+                        : tr(player, "language_auto") + " (" + player.getLanguage() + ")";
+                    player.sendSystemMessage(msgf(player, "current_language", lang));
                     return 1;
                 })
             )
@@ -712,11 +892,7 @@ public final class WeatherEffectHandler {
 
     private static void sendEffectFeedback(ServerPlayer player, Map<String, Integer> newlyApplied, int intervalSec) {
         if (newlyApplied == null || newlyApplied.isEmpty()) return;
-        MutableComponent msg = Component.literal("§a[天气效果] §f已触发 ")
-            .append(Component.literal(String.valueOf(newlyApplied.size())))
-            .append(Component.literal(" 个效果（"))
-            .append(Component.literal(String.valueOf(intervalSec)))
-            .append(Component.literal("秒触发一次）："));
+        MutableComponent msg = msgf(player, "effect_feedback", newlyApplied.size(), intervalSec);
         boolean first = true;
         for (var entry : newlyApplied.entrySet()) {
             ResourceLocation rl = ResourceLocation.parse(entry.getKey());
@@ -739,20 +915,20 @@ public final class WeatherEffectHandler {
 
     private static void showModInfo(ServerPlayer player, WeatherEffectData data) {
         WeatherType weather = getWeatherType(player.serverLevel());
-        String weatherName = switch (weather) {
-            case CLEAR -> "晴天";
-            case RAIN -> "雨天";
-            case THUNDER -> "雷暴";
-        };
-        String modeName = data.getMode().equals("SPECIFIED") ? "指定模式" : "随机模式";
+        String weatherName = tr(player, switch (weather) {
+            case CLEAR -> "weather_clear_name";
+            case RAIN -> "weather_rain_name";
+            case THUNDER -> "weather_thunder_name";
+        });
+        String modeName = tr(player, data.getMode().equals("SPECIFIED") ? "mode_specified_name" : "mode_random_name");
         int intervalSec = getEffectiveInterval(data) / 20;
-        player.sendSystemMessage(Component.literal("§a[天气效果] §f当前模式：" + modeName + "，当前难度：" + data.getDifficulty().displayName + "，间隔：" + intervalSec + "秒"));
-        player.sendSystemMessage(Component.literal("§a[天气效果] §f当前天气：" + weatherName));
+        player.sendSystemMessage(msgf(player, "mod_info_header", modeName, data.getDifficulty().getDisplayName(player), intervalSec));
+        player.sendSystemMessage(msgf(player, "current_weather", weatherName));
         var effects = player.getActiveEffects();
         if (effects.isEmpty()) {
-            player.sendSystemMessage(Component.literal("§a[天气效果] §f当前无药水效果"));
+            player.sendSystemMessage(msg(player, "no_effects"));
         } else {
-            MutableComponent msg = Component.literal("§a[天气效果] §f当前效果：");
+            MutableComponent msg = msg(player, "effects_current_header");
             boolean first = true;
             for (MobEffectInstance instance : effects) {
                 if (!first) msg = msg.append(Component.literal("§7, §f"));
@@ -877,6 +1053,26 @@ public final class WeatherEffectHandler {
         }
     }
 
+    private static String getLang(ServerPlayer player) {
+        return playerLanguage.getOrDefault(player.getUUID(), player.getLanguage());
+    }
+
+    private static String tr(ServerPlayer player, String key) {
+        return (getLang(player).startsWith("zh") ? ZH : EN).getOrDefault(key, key);
+    }
+
+    private static String trf(ServerPlayer player, String key, Object... args) {
+        return String.format(tr(player, key), args);
+    }
+
+    private static MutableComponent msg(ServerPlayer player, String key) {
+        return Component.literal(tr(player, key));
+    }
+
+    private static MutableComponent msgf(ServerPlayer player, String key, Object... args) {
+        return Component.literal(trf(player, key, args));
+    }
+
     private static void removeOldEffect(ServerPlayer player, String effectId) {
         ResourceLocation rl = ResourceLocation.parse(effectId);
         ResourceKey<MobEffect> key = ResourceKey.create(Registries.MOB_EFFECT, rl);
@@ -898,21 +1094,21 @@ public final class WeatherEffectHandler {
         data.setDirty();
     }
 
-    private static Component buildSpecifiedAnnouncement(WeatherEffectData data) {
-        MutableComponent msg = Component.literal("§a[天气效果] §f指定模式效果已刷新：");
-        msg = msg.append(Component.literal("\n  §e晴天§f：").append(buildEffectComponent(data.getSpecifiedClearEffect())));
-        msg = msg.append(Component.literal("\n  §b雨天§f：").append(buildEffectComponent(data.getSpecifiedRainEffect())));
-        msg = msg.append(Component.literal("\n  §d雷暴§f：").append(buildEffectComponent(data.getSpecifiedThunderEffect())));
+    private static Component buildSpecifiedAnnouncement(ServerPlayer player, WeatherEffectData data) {
+        MutableComponent msg = msg(player, "specified_refreshed").copy();
+        msg = msg.append(Component.literal("\n  ").append(Component.literal("§e" + tr(player, "weather_clear_name") + "§f：").append(buildEffectComponent(player, data.getSpecifiedClearEffect()))));
+        msg = msg.append(Component.literal("\n  ").append(Component.literal("§b" + tr(player, "weather_rain_name") + "§f：").append(buildEffectComponent(player, data.getSpecifiedRainEffect()))));
+        msg = msg.append(Component.literal("\n  ").append(Component.literal("§d" + tr(player, "weather_thunder_name") + "§f：").append(buildEffectComponent(player, data.getSpecifiedThunderEffect()))));
         return msg;
     }
 
-    private static Component buildEffectComponent(String effectId) {
-        if (effectId == null || effectId.isEmpty()) return Component.literal("§7无");
+    private static Component buildEffectComponent(ServerPlayer player, String effectId) {
+        if (effectId == null || effectId.isEmpty()) return Component.literal(tr(player, "none_text"));
         ResourceLocation rl = ResourceLocation.parse(effectId);
         ResourceKey<MobEffect> key = ResourceKey.create(Registries.MOB_EFFECT, rl);
         return BuiltInRegistries.MOB_EFFECT.getHolder(key)
             .map(h -> Component.translatable(h.value().getDescriptionId()))
-            .orElse(Component.literal("§7未知"));
+            .orElse(Component.literal(tr(player, "unknown_text")));
     }
 
     private static Map<String, Integer> applySpecifiedEffect(ServerPlayer player, WeatherType currentWeather, WeatherEffectData data) {
